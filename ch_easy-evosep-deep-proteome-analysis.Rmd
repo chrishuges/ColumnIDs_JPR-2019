@@ -1,0 +1,221 @@
+---
+title: "Published data sets"
+output: html_notebook
+---
+
+This document details the analysis of data from published studies using the Easy nanoLC and the Evosep One. 
+
+<br>
+
+### Data analysis and plotting
+
+<br>
+
+These are the R libraries we will require.
+
+```{r, results = 'hide'}
+library(ggplot2)
+library(cowplot)
+library(RColorBrewer)
+library(viridis)
+library(pheatmap)
+library(dplyr)
+library(data.table)
+library(reshape2)
+```
+
+
+<br>
+
+First we can plot the chromatograms. 
+
+```{r}
+###################################################################################################################################################################
+#get the chromatogram files
+easy_chrom = read.table('/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/20170504_QE5_nLC7_DBJ_SA_x_LFQprot_100ug_46frac_15min_15000_02.raw_Ms_BP_chromatogram.txt', header = TRUE, sep = '\t')
+
+evo_chrom = read.table('/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/20180216_QE5_Evo1_DBJ_SA_LFQprot_HeLa_100ug_46fracs_22min_02.raw_Ms_BP_chromatogram.txt', header = TRUE, sep = '\t')
+
+```
+
+<br>
+
+Plot the chromatogram data.
+
+```{r}
+###################################################################################################################################################################
+#plot the chromatograms
+output_plot = ggplot(easy_chrom, aes(RetentionTime, Intensity)) +
+  geom_line(color = brewer.pal(6,'RdBu')[6], size = 0.75) +
+  labs(x = "Retention Time (minutes)", y = 'Intensity', title = 'Easy nanoLC - Fraction 2') +
+  theme(axis.text.x = element_text(size = 9), legend.position="none") +
+  scale_y_continuous(limits = c(0,1.3e10), breaks = seq(0,1.3e10,2.5e9)) 
+output_plot
+save_plot('/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/Ranalysis/easy-nano-chromatogram-frac2.pdf',output_plot)
+
+output_plot = ggplot(evo_chrom, aes(RetentionTime, Intensity)) +
+  geom_line(color = brewer.pal(6,'RdBu')[6], size = 0.75) +
+  labs(x = "Retention Time (minutes)", y = 'Intensity', title = 'Evosep One - Fraction 2') +
+  theme(axis.text.x = element_text(size = 9), legend.position="none") +
+  scale_y_continuous(limits = c(0,2e9), breaks = seq(0,2e9,5e8)) 
+output_plot
+save_plot('/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/Ranalysis/evo-nano-chromatogram-frac2.pdf',output_plot)
+
+
+```
+
+<br>
+
+Now we can make a distribution of MS2 scans per cycle.
+
+
+```{r}
+###################################################################################################################################################################
+#plot MS2 scans per cycle
+easy_scan = read.table('/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/20170504_QE5_nLC7_DBJ_SA_x_LFQprot_100ug_46frac_15min_15000_02.raw_Matrix.txt', header = TRUE, sep = '\t')
+
+output_plot = ggplot(easy_scan, aes(ParentScanRetTime, MS2ScansPerCycle)) +
+  #geom_line(colour = brewer.pal(3,'PuBuGn')[3], size = 1.5, alpha = 0.75) +
+  geom_point(fill = brewer.pal(6,'RdBu')[6], pch = 21, size = 3, colour = 'black', alpha = 0.2, stroke = 0.1) +
+  labs(x = "Retention Time (min)", y = 'Number of Triggered MS2 Scans Per MS1', title = 'Easy nanoLC - MS2 Scans Triggering') +
+  theme(axis.text.x = element_text(size = 12), legend.position="none")
+output_plot
+save_plot('/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/Ranalysis/easy-nano-ms2-scans-frac2.pdf',output_plot)
+
+
+
+evo_scan = read.table('/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/20180216_QE5_Evo1_DBJ_SA_LFQprot_HeLa_100ug_46fracs_22min_02.raw_Matrix.txt', header = TRUE, sep = '\t')
+
+output_plot = ggplot(evo_scan, aes(ParentScanRetTime, MS2ScansPerCycle)) +
+  #geom_line(colour = brewer.pal(3,'PuBuGn')[3], size = 1.5, alpha = 0.75) +
+  geom_point(fill = brewer.pal(6,'RdBu')[6], pch = 21, size = 3, colour = 'black', alpha = 0.2, stroke = 0.1) +
+  labs(x = "Retention Time (min)", y = 'Number of Triggered MS2 Scans Per MS1', title = 'Evosep One - MS2 Scans Triggering') +
+  theme(axis.text.x = element_text(size = 12), legend.position="none")
+output_plot
+save_plot('/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/Ranalysis/evo-nano-ms2-scans-frac2.pdf',output_plot)
+
+
+
+
+```
+
+
+<br>
+
+This is not super informative. What if we make it as a heatmap.
+
+```{r}
+##########################################
+#first we need all the easy scan data
+easy_scan_files = list.files('/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/easy_scan', pattern = 'Matrix.txt', full.names = TRUE)
+easy_scan_all = data.frame()
+for (i in 1:length(easy_scan_files)){
+  easy_temp1 = read.table(easy_scan_files[i], header = TRUE, sep = '\t')
+  easy_temp2 = easy_temp1 %>% 
+    dplyr::select(MS2ScanNumber, ParentScanRetTime) #select columns
+  easy_temp2$fraction = i
+  easy_scan_all = rbind(easy_scan_all, easy_temp2)
+}
+
+easy_scan_all$fraction = factor(easy_scan_all$fraction, levels = 1:46)
+easy_scan_all$MS2Num = 1
+easy_scan_all$bin_group = cut(easy_scan_all$ParentScanRetTime, breaks = seq(0,19,1))
+easy_scan_compress = setDT(easy_scan_all)[,lapply(.SD,sum,na.rm=TRUE), by = c('fraction','bin_group'),.SDcols='MS2Num']
+setDF(easy_scan_compress)
+easy_scan_ordered = easy_scan_compress[order(easy_scan_compress$bin_group),]
+easy_scan_ordered$bin_start = as.numeric(sub('\\((.*?)\\,.*','\\1',easy_scan_ordered$bin_group))
+easy_scan_ordered$bin_end = as.numeric(sub('.*\\,(.*?)\\].*','\\1',easy_scan_ordered$bin_group))
+easy_scan_ordered$midTime = easy_scan_ordered$bin_start + 0.5
+
+mat1 = as.data.frame(dcast(easy_scan_ordered, fraction ~ midTime, value.var = "MS2Num"))
+row.names(mat1) = mat1$fraction
+mat2 = as.matrix(mat1[,c(2:20)])
+
+#make the breaks
+mat_breaks = seq(1, 1500, by = 5)
+break_cols = colorRampPalette(rev(brewer.pal(n = 6, name = "RdBu")))(length(mat_breaks))
+
+
+#make the actual plot
+pheatmap(mat2, color = break_cols, border_color = 'white', cluster_rows = FALSE, cluster_cols = FALSE, show_colnames = TRUE, show_rownames = TRUE,
+         cellwidth = 5, cellheight = 5, fontsize = 6, gaps_row = NULL, gaps_col = NULL, breaks = mat_breaks, legend = TRUE, 
+         filename = '/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/Ranalysis/easy-nano-fraction-heatmap.pdf'
+)
+
+```
+
+
+Now do this again for the evosep data.
+
+```{r}
+##########################################
+#first we need all the easy scan data
+evo_scan_files = list.files('/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/evo_scan', pattern = 'Matrix.txt', full.names = TRUE)
+evo_scan_all = data.frame()
+for (i in 1:length(evo_scan_files)){
+  evo_temp1 = read.table(evo_scan_files[i], header = TRUE, sep = '\t')
+  evo_temp2 = evo_temp1 %>% 
+    dplyr::select(MS2ScanNumber, ParentScanRetTime) #select columns
+  evo_temp2$fraction = i
+  evo_scan_all = rbind(evo_scan_all, evo_temp2)
+}
+
+evo_scan_all$fraction = factor(evo_scan_all$fraction, levels = 1:46)
+evo_scan_all$MS2Num = 1
+evo_scan_all$bin_group = cut(evo_scan_all$ParentScanRetTime, breaks = seq(0,22,1))
+evo_scan_compress = setDT(evo_scan_all)[,lapply(.SD,sum,na.rm=TRUE), by = c('fraction','bin_group'),.SDcols='MS2Num']
+setDF(evo_scan_compress)
+evo_scan_ordered = evo_scan_compress[order(evo_scan_compress$bin_group),]
+evo_scan_ordered$bin_start = as.numeric(sub('\\((.*?)\\,.*','\\1',evo_scan_ordered$bin_group))
+evo_scan_ordered$bin_end = as.numeric(sub('.*\\,(.*?)\\].*','\\1',evo_scan_ordered$bin_group))
+evo_scan_ordered$midTime = evo_scan_ordered$bin_start + 0.5
+
+mat1 = as.data.frame(dcast(evo_scan_ordered, fraction ~ midTime, value.var = "MS2Num"))
+row.names(mat1) = mat1$fraction
+mat2 = as.matrix(mat1[,c(2:22)])
+
+#make the breaks
+mat_breaks = seq(1, 1500, by = 5)
+break_cols = colorRampPalette(rev(brewer.pal(n = 6, name = "RdBu")))(length(mat_breaks))
+
+
+#make the actual plot
+pheatmap(mat2, color = break_cols, border_color = 'white', cluster_rows = FALSE, cluster_cols = FALSE, show_colnames = TRUE, show_rownames = TRUE,
+         cellwidth = 5, cellheight = 5, fontsize = 6, gaps_row = NULL, gaps_col = NULL, breaks = mat_breaks, legend = TRUE, 
+         filename = '/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/Ranalysis/evo-nano-fraction-heatmap.pdf'
+)
+
+```
+
+<br>
+
+Do the efficiency calculations.
+
+```{r}
+###################################################################################################################################################################
+#get the qc file
+easy_qc = read.table('/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/easy_qc/QcDataTable.csv', header = TRUE, sep = ',')
+
+easy_qc$acquisitionE = easy_qc$NumMs2Scans / easy_qc$TotalScans
+easy_qc$injectionE = easy_qc$TotalAnalysisTime / (easy_qc$TotalAnalysisTime + 17.8)
+easy_qc$MSE = easy_qc$acquisitionE * easy_qc$injectionE
+
+mean(easy_qc$acquisitionE)
+mean(easy_qc$injectionE)
+mean(easy_qc$MSE)
+
+
+#get the qc file
+evo_qc = read.table('/projects/ptx_analysis/chughes/projects-current/morin_column-testing/published-data/evo_qc/QcDataTable.csv', header = TRUE, sep = ',')
+
+evo_qc$acquisitionE = evo_qc$NumMs2Scans / evo_qc$TotalScans
+evo_qc$injectionE = evo_qc$TotalAnalysisTime / (evo_qc$TotalAnalysisTime + 3)
+evo_qc$MSE = evo_qc$acquisitionE * evo_qc$injectionE
+
+mean(evo_qc$acquisitionE)
+mean(evo_qc$injectionE)
+mean(evo_qc$MSE)
+
+
+
+```
